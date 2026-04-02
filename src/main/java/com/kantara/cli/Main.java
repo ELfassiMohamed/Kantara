@@ -1,37 +1,25 @@
 package com.kantara.cli;
 
-import com.kantara.extractor.DataExtractor;
+import com.kantara.extractor.PdfExtractor;
 import java.util.List;
-import java.util.Map;
 
 public class Main {
 
 	public static void main(String[] args) {
-		System.out.println("Kantara MVP started...");
-
-		// 1. Specify the path to your Excel file
-		String filePath = "data/actors.csv";
+		String filePath = "data/report.pdf";
+		PdfExtractor extractor = new PdfExtractor();
 
 		try {
-			// 2. Instantiate the extractor
-			DataExtractor extractor = new DataExtractor();
+			String cleanedText = extractor.extractText(filePath);
+			List<String> sections = extractor.extractSections(cleanedText);
 
-			// 3. Call the extract method
-			System.out.println("Starting extraction from: " + filePath);
-			List<Map<String, String>> extractedData = extractor.extract(filePath);
-
-			// 4. Output/process the results
-			if (extractedData.isEmpty()) {
-				System.out.println("No data found or file is empty.");
-			} else {
-				System.out.println("--- Extracted Data (" + extractedData.size() + " rows) ---");
-				for (int i = 0; i < extractedData.size(); i++) {
-					Map<String, String> row = extractedData.get(i);
-					System.out.printf("Row %d: %s%n", i + 1, row);
-				}
+			System.out.println("Cleaned text length: " + cleanedText.length());
+			System.out.println("Sections found: " + sections.size());
+			for (int i = 0; i < sections.size(); i++) {
+				System.out.printf("--- Section %d ---%n%s%n%n", i + 1, sections.get(i));
 			}
 		} catch (Exception e) {
-			System.err.println("Extraction failed! Error: " + e.getMessage());
+			System.err.println("PDF extraction failed: " + e.getMessage());
 		}
 	}
 
