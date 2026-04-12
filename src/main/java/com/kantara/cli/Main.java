@@ -5,6 +5,9 @@ import com.kantara.ai.AiService;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * CLI Entry point to test the full data pipeline from extraction to AI payload.
+ */
 public class Main {
 
     public static void main(String[] args) {
