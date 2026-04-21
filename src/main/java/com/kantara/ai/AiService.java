@@ -1,6 +1,7 @@
 ﻿package com.kantara.ai;
 
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -83,6 +85,25 @@ public class AiService {
         }
     }
 
+    public AiResponse parseAiResponse(String rawResponse) {
+        if (rawResponse == null || rawResponse.isBlank()) {
+            throw new IllegalStateException("AI response is empty.");
+        }
+
+        String json = extractJsonObject(rawResponse);
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            List<String> keyInsights = readStringArray(root, "keyInsights", "key_insights");
+            List<Slide> presentation = readPresentation(root);
+
+            AiResponse parsed = new AiResponse(keyInsights, presentation);
+            validate(parsed);
+            return parsed;
+        } catch (JacksonException e) {
+            throw new IllegalStateException("AI response contains invalid JSON.", e);
+        }
+    }
+
     private String buildPrompt(String payloadJson) {
         return """
                 You are a senior business analyst.
@@ -103,7 +124,7 @@ public class AiService {
                 - Do NOT include explanations or comments.
 
                 REQUIREMENTS:
-                1. key_insights:
+                1. keyInsights:
                 - Provide 3-5 insights.
                 - Each insight MUST reference actual data (numbers, categories, trends).
                 - Each insight MUST be specific and actionable (no generic statements).
@@ -139,7 +160,7 @@ public class AiService {
 
                 OUTPUT FORMAT:
                 {
-                  "key_insights": [
+                  "keyInsights": [
                     "...",
                     "...",
                     "..."
@@ -234,11 +255,108 @@ public class AiService {
         );
 
         Map<String, Object> simulated = Map.of(
-                "key_insights", insights,
+                "keyInsights", insights,
                 "presentation", slides
         );
 
         return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(simulated);
+    }
+
+    private String extractJsonObject(String rawResponse) {
+        int start = rawResponse.indexOf('{');
+        if (start < 0) {
+            throw new IllegalStateException("AI response does not contain a JSON object.");
+        }
+
+        boolean inString = false;
+        boolean escaped = false;
+        int depth = 0;
+
+        for (int i = start; i < rawResponse.length(); i++) {
+            char c = rawResponse.charAt(i);
+
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
+
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return rawResponse.substring(start, i + 1);
+                }
+            }
+        }
+
+        throw new IllegalStateException("AI response JSON is incomplete.");
+    }
+
+    private List<String> readStringArray(JsonNode root, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            JsonNode node = root.path(fieldName);
+            if (!node.isArray()) {
+                continue;
+            }
+
+            List<String> values = new ArrayList<>();
+            for (JsonNode item : node) {
+                String value = item.asText("").trim();
+                if (!value.isEmpty()) {
+                    values.add(value);
+                }
+            }
+            return values;
+        }
+
+        return Collections.emptyList();
+    }
+
+    private List<Slide> readPresentation(JsonNode root) {
+        JsonNode presentationNode = root.path("presentation");
+        if (!presentationNode.isArray()) {
+            return Collections.emptyList();
+        }
+
+        List<Slide> slides = new ArrayList<>();
+        for (JsonNode slideNode : presentationNode) {
+            String title = slideNode.path("title").asText("").trim();
+            List<String> bullets = readStringArray(slideNode, "bullets");
+            slides.add(new Slide(title, bullets));
+        }
+        return slides;
+    }
+
+    private void validate(AiResponse response) {
+        if (response.presentation().isEmpty()) {
+            throw new IllegalStateException("AI response validation failed: presentation is empty.");
+        }
+
+        for (int i = 0; i < response.presentation().size(); i++) {
+            Slide slide = response.presentation().get(i);
+            if (slide.title() == null || slide.title().isBlank()) {
+                throw new IllegalStateException(
+                        "AI response validation failed: slide " + (i + 1) + " has no title."
+                );
+            }
+            if (slide.bullets() == null || slide.bullets().isEmpty()) {
+                throw new IllegalStateException(
+                        "AI response validation failed: slide " + (i + 1) + " has no bullets."
+                );
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
