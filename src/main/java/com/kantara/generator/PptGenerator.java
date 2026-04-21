@@ -1,5 +1,6 @@
 package com.kantara.generator;
 
+import com.kantara.ai.Slide;
 import org.apache.poi.sl.usermodel.VerticalAlignment;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xslf.usermodel.XSLFSlide;
@@ -13,6 +14,7 @@ import java.awt.Rectangle;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +23,13 @@ public class PptGenerator {
 
     private static final int MAX_SLIDES = 6;
     private static final int MAX_BULLETS_PER_SLIDE = 5;
+    private static final int MAX_BULLET_WORDS = 12;
+    private static final int MAX_BULLET_CHARS = 95;
     private static final double TITLE_FONT_SIZE = 32.0;
     private static final double BULLET_FONT_SIZE = 22.0;
+    private static final double BULLET_SPACING_AFTER = 14.0;
 
-    public void generatePresentation(List<Map<String, Object>> slides, String outputPath) {
+    public void generatePresentation(List<Slide> slides, String outputPath) {
         if (slides == null || slides.isEmpty()) {
             throw new IllegalArgumentException("slides must not be null or empty");
         }
@@ -34,14 +39,17 @@ public class PptGenerator {
 
         try (XMLSlideShow ppt = new XMLSlideShow()) {
             int createdSlides = 0;
-            for (Map<String, Object> slideData : slides) {
+            for (Slide slideData : slides) {
                 if (createdSlides >= MAX_SLIDES) {
                     break;
                 }
-                if (isEmptySlide(slideData)) {
+
+                Slide normalized = normalizeSlide(slideData);
+                if (normalized == null) {
                     continue;
                 }
-                addSlide(ppt, slideData);
+
+                addSlide(ppt, normalized);
                 createdSlides++;
             }
 
@@ -57,15 +65,26 @@ public class PptGenerator {
         }
     }
 
-    private void addSlide(XMLSlideShow ppt, Map<String, Object> slideData) {
+    public void generatePresentationFromMaps(List<Map<String, Object>> slides, String outputPath) {
+        if (slides == null || slides.isEmpty()) {
+            throw new IllegalArgumentException("slides must not be null or empty");
+        }
+
+        List<Slide> converted = new ArrayList<>();
+        for (Map<String, Object> item : slides) {
+            if (item == null) {
+                continue;
+            }
+            converted.add(new Slide(safeString(item.get("title"), ""), extractBullets(item.get("bullets"))));
+        }
+        generatePresentation(converted, outputPath);
+    }
+
+    private void addSlide(XMLSlideShow ppt, Slide slideData) {
         XSLFSlide slide = ppt.createSlide();
         Dimension pageSize = ppt.getPageSize();
-
-        String title = safeString(slideData.get("title"), "Untitled Slide");
-        List<String> bullets = extractBullets(slideData.get("bullets"));
-
-        addTitle(slide, title, pageSize);
-        addBullets(slide, bullets, pageSize);
+        addTitle(slide, slideData.title(), pageSize);
+        addBullets(slide, slideData.bullets(), pageSize);
     }
 
     private void addTitle(XSLFSlide slide, String title, Dimension pageSize) {
@@ -91,16 +110,12 @@ public class PptGenerator {
         bulletBox.setWordWrap(true);
         bulletBox.setVerticalAlignment(VerticalAlignment.TOP);
 
-        if (bullets.isEmpty()) {
-            return;
-        }
-
         for (String bullet : bullets) {
             XSLFTextParagraph paragraph = bulletBox.addNewTextParagraph();
             paragraph.setBullet(true);
             paragraph.setLeftMargin(18.0);
             paragraph.setIndent(-8.0);
-            paragraph.setSpaceAfter(10.0);
+            paragraph.setSpaceAfter(BULLET_SPACING_AFTER);
 
             XSLFTextRun run = paragraph.addNewTextRun();
             run.setText(bullet);
@@ -109,13 +124,53 @@ public class PptGenerator {
         }
     }
 
-    private boolean isEmptySlide(Map<String, Object> slideData) {
-        if (slideData == null || slideData.isEmpty()) {
-            return true;
+    private Slide normalizeSlide(Slide original) {
+        if (original == null) {
+            return null;
         }
-        String title = safeString(slideData.get("title"), "");
-        List<String> bullets = extractBullets(slideData.get("bullets"));
-        return isBlank(title) && bullets.isEmpty();
+
+        String title = safeString(original.title(), "");
+        if (isBlank(title)) {
+            return null;
+        }
+
+        List<String> normalizedBullets = new ArrayList<>();
+        if (original.bullets() != null) {
+            for (String bullet : original.bullets()) {
+                String cleaned = limitBulletLength(bullet);
+                if (!isBlank(cleaned)) {
+                    normalizedBullets.add(cleaned);
+                }
+                if (normalizedBullets.size() >= MAX_BULLETS_PER_SLIDE) {
+                    break;
+                }
+            }
+        }
+
+        if (normalizedBullets.isEmpty()) {
+            return null;
+        }
+
+        return new Slide(title, normalizedBullets);
+    }
+
+    private String limitBulletLength(String bullet) {
+        String value = safeString(bullet, "");
+        if (isBlank(value)) {
+            return "";
+        }
+
+        String[] words = value.split("\\s+");
+        String compactByWords = words.length <= MAX_BULLET_WORDS
+                ? value
+                : String.join(" ", Arrays.asList(words).subList(0, MAX_BULLET_WORDS)) + "...";
+
+        if (compactByWords.length() <= MAX_BULLET_CHARS) {
+            return compactByWords;
+        }
+
+        int boundary = Math.max(0, MAX_BULLET_CHARS - 3);
+        return compactByWords.substring(0, boundary).trim() + "...";
     }
 
     private List<String> extractBullets(Object bulletsObject) {
@@ -148,4 +203,3 @@ public class PptGenerator {
         return text == null || text.trim().isEmpty();
     }
 }
-
