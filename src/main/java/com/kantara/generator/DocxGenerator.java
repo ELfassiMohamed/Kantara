@@ -12,6 +12,7 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import com.kantara.exception.*;
 
 public class DocxGenerator {
 
@@ -21,10 +22,10 @@ public class DocxGenerator {
 
     public void generateReport(AiResponse response, String outputPath) {
         if (response == null) {
-            throw new IllegalArgumentException("response must not be null");
+            throw new ValidationException("response must not be null");
         }
         if (isBlank(outputPath)) {
-            throw new IllegalArgumentException("outputPath must not be blank");
+            throw new ValidationException("outputPath must not be blank");
         }
 
         List<Slide> slides = response.presentation();
@@ -34,7 +35,7 @@ public class DocxGenerator {
 
         Path output = Path.of(outputPath);
         if (Files.exists(output)) {
-            throw new IllegalArgumentException("Output file already exists: " + outputPath);
+            throw new GenerationException("Output file already exists: " + outputPath);
         }
 
         try (XWPFDocument document = new XWPFDocument();
@@ -61,7 +62,7 @@ public class DocxGenerator {
 
             document.write(stream);
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to generate DOCX report at: " + outputPath, e);
+            throw new GenerationException("Failed to generate DOCX report at: " + outputPath, e);
         }
     }
 

@@ -12,11 +12,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.kantara.exception.*;
 
 /**
  * Extracts structured data from multiple file formats (.xlsx, .csv).
  */
-public class DataExtractor {
+public class DataExtractor implements Extractable {
 
     /**
      * Reads a file and extracts its content as a list of maps.
@@ -27,7 +28,7 @@ public class DataExtractor {
      */
     public List<Map<String, String>> extract(String filePath) {
         if (filePath == null || filePath.isEmpty()) {
-            throw new IllegalArgumentException("File path cannot be null or empty");
+            throw new ValidationException("File path cannot be null or empty");
         }
 
         String lowerPath = filePath.toLowerCase();
@@ -36,7 +37,7 @@ public class DataExtractor {
         } else if (lowerPath.endsWith(".csv")) {
             return extractCsv(filePath);
         } else {
-            throw new UnsupportedOperationException("Unsupported file format: " + filePath);
+            throw new ExtractionException("Unsupported file format: " + filePath);
         }
     }
 
@@ -95,7 +96,7 @@ public class DataExtractor {
             }
 
         } catch (IOException e) {
-            throw new RuntimeException("Error reading Excel file: " + filePath, e);
+            throw new ExtractionException("Error reading Excel file: " + filePath, e);
         }
 
         return result;
@@ -142,7 +143,7 @@ public class DataExtractor {
             }
 
         } catch (IOException e) {
-            throw new RuntimeException("Error reading CSV file: " + filePath, e);
+            throw new ExtractionException("Error reading CSV file: " + filePath, e);
         }
 
         return result;
