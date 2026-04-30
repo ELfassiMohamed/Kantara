@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 
-public class PayloadBuilder {
+public class PayloadBuilder implements PayloadAssembler {
 
     /**
      *

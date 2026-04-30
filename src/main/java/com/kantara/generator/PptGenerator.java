@@ -18,8 +18,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import com.kantara.exception.*;
 
-public class PptGenerator {
+public class PptGenerator implements PresentationGenerator {
 
     private static final int MAX_SLIDES = 6;
     private static final int MAX_BULLETS_PER_SLIDE = 5;
@@ -31,10 +32,10 @@ public class PptGenerator {
 
     public void generatePresentation(List<Slide> slides, String outputPath) {
         if (slides == null || slides.isEmpty()) {
-            throw new IllegalArgumentException("slides must not be null or empty");
+            throw new ValidationException("slides must not be null or empty");
         }
         if (isBlank(outputPath)) {
-            throw new IllegalArgumentException("outputPath must not be blank");
+            throw new ValidationException("outputPath must not be blank");
         }
 
         try (XMLSlideShow ppt = new XMLSlideShow()) {
@@ -54,20 +55,20 @@ public class PptGenerator {
             }
 
             if (createdSlides == 0) {
-                throw new IllegalArgumentException("No valid slide content to generate.");
+                throw new GenerationException("No valid slide content to generate.");
             }
 
             try (FileOutputStream outputStream = new FileOutputStream(outputPath)) {
                 ppt.write(outputStream);
             }
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to generate presentation: " + outputPath, e);
+            throw new GenerationException("Failed to generate presentation: " + outputPath, e);
         }
     }
 
     public void generatePresentationFromMaps(List<Map<String, Object>> slides, String outputPath) {
         if (slides == null || slides.isEmpty()) {
-            throw new IllegalArgumentException("slides must not be null or empty");
+            throw new ValidationException("slides must not be null or empty");
         }
 
         List<Slide> converted = new ArrayList<>();

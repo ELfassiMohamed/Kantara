@@ -10,11 +10,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import com.kantara.exception.*;
 
 /**
  * Extracts and structures text content from PDF documents.
  */
-public class PdfExtractor {
+public class PdfExtractor implements TextExtractable {
 
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("[\\t\\x0B\\f ]+");
     private static final Pattern KEYWORD_HEADING_PATTERN =
@@ -28,12 +29,12 @@ public class PdfExtractor {
      */
     public String extractText(String filePath) {
         if (filePath == null || filePath.isBlank()) {
-            throw new IllegalArgumentException("filePath must not be null or blank.");
+            throw new ValidationException("filePath must not be null or blank.");
         }
 
         File pdfFile = new File(filePath);
         if (!pdfFile.exists() || !pdfFile.isFile()) {
-            throw new IllegalArgumentException("PDF file not found: " + filePath);
+            throw new ValidationException("PDF file not found: " + filePath);
         }
 
         try (PDDocument document = Loader.loadPDF(pdfFile)) {
@@ -42,7 +43,7 @@ public class PdfExtractor {
             String rawText = stripper.getText(document);
             return cleanText(rawText);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to extract PDF text from: " + filePath, e);
+            throw new ExtractionException("Failed to extract PDF text from: " + filePath, e);
         }
     }
 

@@ -4,23 +4,32 @@ import com.kantara.ai.AiResponse;
 import com.kantara.ai.AiService;
 import com.kantara.ai.PayloadBuilder;
 import com.kantara.config.Config;
+import com.kantara.exception.ExtractionException;
 import com.kantara.extractor.DataExtractor;
 import com.kantara.extractor.PdfExtractor;
 import com.kantara.generator.PptGenerator;
+import com.kantara.generator.PresentationGenerator;
+import com.kantara.ai.InsightGenerator;
+import com.kantara.ai.PayloadAssembler;
+import com.kantara.extractor.Extractable;
+import com.kantara.extractor.TextExtractable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 
 public class KantaraPipeline {
 
     private static final Logger LOGGER = Logger.getLogger(KantaraPipeline.class.getName());
 
-    private final DataExtractor dataExtractor;
-    private final PdfExtractor pdfExtractor;
-    private final PayloadBuilder payloadBuilder;
-    private final AiService aiService;
-    private final PptGenerator pptGenerator;
+    private final Extractable dataExtractor;
+    private final TextExtractable pdfExtractor;
+    private final PayloadAssembler payloadBuilder;
+    private final InsightGenerator aiService;
+    private final PresentationGenerator pptGenerator;
     private boolean verbose;
 
     public KantaraPipeline() {
@@ -28,11 +37,11 @@ public class KantaraPipeline {
     }
 
     public KantaraPipeline(
-            DataExtractor dataExtractor,
-            PdfExtractor pdfExtractor,
-            PayloadBuilder payloadBuilder,
-            AiService aiService,
-            PptGenerator pptGenerator
+            Extractable dataExtractor,
+            TextExtractable pdfExtractor,
+            PayloadAssembler payloadBuilder,
+            InsightGenerator aiService,
+            PresentationGenerator pptGenerator
     ) {
         this.dataExtractor = dataExtractor;
         this.pdfExtractor = pdfExtractor;
@@ -42,17 +51,40 @@ public class KantaraPipeline {
     }
 
     public void runPipeline(String excelPath, String pdfPath, String outputPath, Config config) {
-        logInfo("Extracting Excel...");
-        List<Map<String, String>> excelData = dataExtractor.extract(excelPath);
-        if (excelData.isEmpty()) {
-            throw new IllegalStateException("Excel data is empty: " + excelPath);
-        }
+        logInfo("Extracting documents in parallel...");
+        List<Map<String, String>> excelData;
+        List<String> pdfSections;
 
-        logInfo("Extracting PDF...");
-        String pdfText = pdfExtractor.extractText(pdfPath);
-        List<String> pdfSections = pdfExtractor.extractSections(pdfText);
-        if (pdfSections.isEmpty()) {
-            LOGGER.warning("[Kantara] PDF content is empty. Continuing without PDF sections.");
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            CompletableFuture<List<Map<String, String>>> excelFuture =
+                CompletableFuture.supplyAsync(() -> {
+                    logInfo("Extracting Excel...");
+                    List<Map<String, String>> data = dataExtractor.extract(excelPath);
+                    if (data.isEmpty()) {
+                        throw new ExtractionException("Excel data is empty: " + excelPath);
+                    }
+                    return data;
+                }, executor);
+
+            CompletableFuture<List<String>> pdfFuture =
+                CompletableFuture.supplyAsync(() -> {
+                    logInfo("Extracting PDF...");
+                    String text = pdfExtractor.extractText(pdfPath);
+                    List<String> sections = pdfExtractor.extractSections(text);
+                    if (sections.isEmpty()) {
+                        LOGGER.warning("[Kantara] PDF content is empty. Continuing without PDF sections.");
+                    }
+                    return sections;
+                }, executor);
+
+            excelData = excelFuture.join();
+            pdfSections = pdfFuture.join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new ExtractionException("Extraction failed unexpectedly.", cause);
         }
 
         logInfo("Building payload...");

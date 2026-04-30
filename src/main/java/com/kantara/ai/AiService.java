@@ -4,6 +4,7 @@ import com.kantara.config.Config;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import com.kantara.exception.*;
 
 import java.io.IOException;
 import java.net.URI;
@@ -18,28 +19,36 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-public class AiService {
+public class AiService implements InsightGenerator {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final RetryPolicy retryPolicy;
+    private final RetryExecutor retryExecutor;
 
     public AiService() {
-        this(HttpClient.newHttpClient());
+        this(HttpClient.newHttpClient(), RetryPolicy.DEFAULT);
     }
 
     public AiService(HttpClient httpClient) {
+        this(httpClient, RetryPolicy.DEFAULT);
+    }
+
+    public AiService(HttpClient httpClient, RetryPolicy retryPolicy) {
         this.httpClient = httpClient;
         this.objectMapper = new ObjectMapper();
+        this.retryPolicy = retryPolicy;
+        this.retryExecutor = new RetryExecutor();
     }
 
     public String generateInsights(Map<String, Object> payload, Config config) {
         if (payload == null || payload.isEmpty()) {
-            throw new IllegalArgumentException("[Kantara] ERROR: Payload must not be empty.");
+            throw new ValidationException("Payload must not be empty.");
         }
         if (config == null) {
-            throw new IllegalArgumentException("[Kantara] ERROR: Configuration is missing.");
+            throw new ValidationException("Configuration is missing.");
         }
 
         try {
@@ -55,29 +64,33 @@ public class AiService {
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
 
-            HttpResponse<String> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-            );
+            return retryExecutor.execute(() -> {
+                try {
+                    HttpResponse<String> response = httpClient.send(
+                            request,
+                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+                    );
 
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("[Kantara] ERROR: AI request failed with status " + response.statusCode() + ".");
-            }
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        throw new AiException("AI request failed with status " + response.statusCode() + ".", response.statusCode());
+                    }
 
-            return extractGeneratedText(response.body());
+                    return extractGeneratedText(response.body());
+                } catch (IOException e) {
+                    throw new AiException("Network error while calling AI service.", e);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new AiException("AI request was interrupted.", e);
+                }
+            }, retryPolicy);
         } catch (JacksonException e) {
-            throw new IllegalStateException("[Kantara] ERROR: Failed to build AI request payload.");
-        } catch (IOException e) {
-            throw new IllegalStateException("[Kantara] ERROR: Network error while calling AI service.");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("[Kantara] ERROR: AI request was interrupted.");
+            throw new AiException("Failed to build AI request payload.", e);
         }
     }
 
     public AiResponse parseAiResponse(String rawResponse) {
         if (rawResponse == null || rawResponse.isBlank()) {
-            throw new IllegalStateException("[Kantara] ERROR: AI response is empty.");
+            throw new AiException("AI response is empty.");
         }
 
         String json = extractJsonObject(rawResponse);
@@ -90,7 +103,7 @@ public class AiService {
             validate(parsed);
             return parsed;
         } catch (JacksonException e) {
-            throw new IllegalStateException("[Kantara] ERROR: AI response contains invalid JSON.");
+            throw new AiException("AI response contains invalid JSON.", e);
         }
     }
 
@@ -100,13 +113,13 @@ public class AiService {
         String apiKey = config.apiKey();
 
         if (endpoint.isEmpty()) {
-            throw new IllegalStateException("[Kantara] ERROR: Endpoint is missing.");
+            throw new ConfigException("Endpoint is missing.");
         }
         if (model.isEmpty()) {
-            throw new IllegalStateException("[Kantara] ERROR: Model is missing.");
+            throw new ConfigException("Model is missing.");
         }
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("[Kantara] ERROR: Missing API key (KANTARA_API_KEY)");
+            throw new ConfigException("Missing API key (KANTARA_API_KEY)");
         }
 
         String encodedKey = URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
@@ -135,14 +148,14 @@ public class AiService {
 
     private String extractGeneratedText(String responseBody) {
         if (responseBody == null || responseBody.isBlank()) {
-            throw new IllegalStateException("[Kantara] ERROR: Empty AI response body.");
+            throw new AiException("Empty AI response body.");
         }
 
         try {
             JsonNode root = objectMapper.readTree(responseBody);
             JsonNode candidates = root.path("candidates");
             if (!candidates.isArray()) {
-                throw new IllegalStateException("[Kantara] ERROR: Invalid AI response format.");
+                throw new AiException("Invalid AI response format.");
             }
 
             for (JsonNode candidate : candidates) {
@@ -166,9 +179,9 @@ public class AiService {
                     return text.toString();
                 }
             }
-            throw new IllegalStateException("[Kantara] ERROR: No generated text found in AI response.");
+            throw new AiException("No generated text found in AI response.");
         } catch (JacksonException e) {
-            throw new IllegalStateException("[Kantara] ERROR: Invalid AI response format.");
+            throw new AiException("Invalid AI response format.", e);
         }
     }
 
@@ -246,7 +259,7 @@ public class AiService {
     private String extractJsonObject(String rawResponse) {
         int start = rawResponse.indexOf('{');
         if (start < 0) {
-            throw new IllegalStateException("[Kantara] ERROR: AI response does not contain JSON.");
+            throw new AiException("AI response does not contain JSON.");
         }
 
         boolean inString = false;
@@ -282,7 +295,7 @@ public class AiService {
             }
         }
 
-        throw new IllegalStateException("[Kantara] ERROR: AI response JSON is incomplete.");
+        throw new AiException("AI response JSON is incomplete.");
     }
 
     private List<String> readStringArray(JsonNode root, String... fieldNames) {
@@ -322,19 +335,19 @@ public class AiService {
 
     private void validate(AiResponse response) {
         if (response.presentation().isEmpty()) {
-            throw new IllegalStateException("[Kantara] ERROR: AI response validation failed: presentation is empty.");
+            throw new ValidationException("AI response validation failed: presentation is empty.");
         }
 
         for (int i = 0; i < response.presentation().size(); i++) {
             Slide slide = response.presentation().get(i);
             if (slide.title() == null || slide.title().isBlank()) {
-                throw new IllegalStateException(
-                        "[Kantara] ERROR: AI response validation failed: slide " + (i + 1) + " has no title."
+                throw new ValidationException(
+                        "AI response validation failed: slide " + (i + 1) + " has no title."
                 );
             }
             if (slide.bullets() == null || slide.bullets().isEmpty()) {
-                throw new IllegalStateException(
-                        "[Kantara] ERROR: AI response validation failed: slide " + (i + 1) + " has no bullets."
+                throw new ValidationException(
+                        "AI response validation failed: slide " + (i + 1) + " has no bullets."
                 );
             }
         }

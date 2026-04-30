@@ -2,6 +2,7 @@ package com.kantara.cli;
 
 import com.kantara.config.Config;
 import com.kantara.config.LocalTestConfigLoader;
+import com.kantara.exception.KantaraException;
 import com.kantara.pipeline.KantaraPipeline;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -103,13 +104,17 @@ public class ComposeCommand implements Callable<Integer> {
             System.out.println("[Kantara] Presentation generated successfully: " + outputPath);
             System.out.println("[Kantara] Completed in " + String.format(Locale.ROOT, "%.1f", elapsedSeconds) + " seconds");
             return 0;
-        } catch (Exception e) {
+        } catch (KantaraException e) {
             String message = e.getMessage();
-            if (message != null && message.startsWith("[Kantara] ERROR:")) {
+            if (message != null) {
                 System.err.println(message);
             } else {
-                System.err.println("[Kantara] ERROR: " + (message == null ? "Unexpected failure." : message));
+                System.err.println("[Kantara] ERROR: Unexpected failure.");
             }
+            return 1;
+        } catch (Exception e) {
+            System.err.println("[Kantara] ERROR: Unexpected failure.");
+            e.printStackTrace();
             return 1;
         }
     }
