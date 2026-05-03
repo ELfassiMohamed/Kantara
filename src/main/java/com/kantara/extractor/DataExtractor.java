@@ -17,7 +17,7 @@ import com.kantara.exception.*;
 /**
  * Extracts structured data from multiple file formats (.xlsx, .csv).
  */
-public class DataExtractor implements Extractable {
+public class DataExtractor {
 
     /**
      * Reads a file and extracts its content as a list of maps.
