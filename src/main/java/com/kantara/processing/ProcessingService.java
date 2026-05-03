@@ -2,9 +2,7 @@ package com.kantara.processing;
 
 import com.kantara.exception.ExtractionException;
 import com.kantara.extractor.DataExtractor;
-import com.kantara.extractor.Extractable;
 import com.kantara.extractor.PdfExtractor;
-import com.kantara.extractor.TextExtractable;
 import com.kantara.formatter.JsonFormatter;
 import com.kantara.formatter.MarkdownFormatter;
 import com.kantara.formatter.OutputFormatter;
@@ -18,8 +16,8 @@ import java.util.Map;
 
 public class ProcessingService {
 
-    private final Extractable dataExtractor;
-    private final TextExtractable pdfExtractor;
+    private final DataExtractor dataExtractor;
+    private final PdfExtractor pdfExtractor;
     private final TokenOptimizer tokenOptimizer;
     private final Map<String, OutputFormatter> formatters;
 

@@ -18,7 +18,7 @@ import com.kantara.exception.*;
 /**
  * Extracts and structures text content from PDF documents.
  */
-public class PdfExtractor implements TextExtractable {
+public class PdfExtractor {
 
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("[\\t\\x0B\\f ]+");
     private static final Pattern KEYWORD_HEADING_PATTERN =
