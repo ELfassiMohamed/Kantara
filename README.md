@@ -1,32 +1,50 @@
-# Kantara
+# Kantara (Railway)
 
-Kantara is a fast, local-first document preprocessor designed to extract and optimize data from various file formats (PDF, DOCX, PPTX, CSV) for Large Language Models (LLMs). It converts complex documents into token-efficient JSON, Markdown, or HTML formats.
+Hosted deployment branch for Kantara: a document preprocessor that extracts PDF, DOCX, PPTX, and CSV into LLM-friendly JSON, Markdown, or HTML.
+
+## Deploy on Railway
+
+1. Create a Railway service from this repository.
+2. Set the **deployment branch** to **`railway`** (not `main`).
+3. Railway reads build and start settings from [`railway.json`](railway.json):
+   - **Build:** `mvn -B clean package -DskipTests`
+   - **Start:** `java -jar target/kantara.jar`
+   - **Health check:** `GET /api/health`
+4. Railway injects **`PORT`**; the app binds to that port automatically.
+5. Push to `railway` to trigger deploys: `git push origin railway`
+
+### Optional service variables
+
+| Variable | Purpose |
+|----------|---------|
+| `JAVA_OPTS` | JVM tuning, e.g. `-XX:MaxRAMPercentage=75.0` for PDF/Office workloads |
+| `NIXPACKS_JDK_VERSION` | Set to `21` if the build does not pick Java 21 automatically |
+
+### Security note
+
+There is **no authentication** on `/api/process`. If the service has a public URL, anyone can upload files and use CPU/memory. Use Railway networking or add auth if that is not acceptable.
 
 ## Features
 
-- **Local-First & Fast:** Runs entirely on your machine. No cloud dependencies, no data leaves your computer.
-- **Embedded Web UI:** Comes with a beautiful, responsive Single Page Application (SPA) bundled inside the JAR.
-- **Supported Formats:**
-  - PDF (page-aware text extraction, metadata, section detection, and structured table candidates)
-  - DOCX (paragraph sections and real Word tables)
-  - PPTX (slide text and real PowerPoint tables)
-  - CSV (headers, row numbers, delimiter detection, and formatted values)
-- **Output Formats:**
-  - **JSON:** Structured and clean, ready for programmatic consumption.
-  - **Markdown:** Clean and readable, optimized for LLM prompting.
-  - **HTML:** Renderable structured output for previews and browser-friendly exports.
-- **Token Optimization:** Automatically cleans up whitespace, collapses multiple newlines, and strips common boilerplate to save LLM tokens.
-- **LLM Chunking:** Adds source-aware chunks with token estimates for direct use in retrieval and prompting workflows.
-- **Batch Processing:** Upload one document or a batch of PDF/DOCX/PPTX/CSV files in the embedded web UI.
+- **Embedded Web UI:** SPA bundled in the JAR.
+- **Formats:** PDF, DOCX, PPTX, CSV.
+- **Output:** JSON, Markdown, HTML.
+- **Token optimization** and **LLM chunking** with token estimates.
+- **Batch uploads** via the web UI (50MB per file).
 
-## Prerequisites
+On Railway, the **Exit** control is hidden and `/api/shutdown` is disabled (`RAILWAY_ENVIRONMENT` is set).
 
-- Java 21 or higher
-- Maven 3.8+
+## Local run (this branch)
 
-## Downloads
+Requires Java 21 and Maven 3.8+.
 
-Release builds are published from Git tags named like `v1.0.0`.
+```bash
+mvn -B clean package
+java -jar target/kantara.jar
+```
 
-By default, the server starts on port `7070` and will automatically open your default web browser to `http://localhost:7070`.
+Opens `http://localhost:7070` in your browser when `PORT` is not set.
 
+## `main` branch
+
+Desktop releases and GitHub Actions live on **`main`**. This branch is intentionally slimmed for Railway only; merge `main` into `railway` when you need application updates without bringing back `.github/workflows/`.
